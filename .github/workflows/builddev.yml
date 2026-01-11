@@ -95,16 +95,22 @@ jobs:
         # 复制Android版本的可执行文件
         if [ -f tools/build/android/kptools-android ]; then
           cp -f tools/build/android/kptools-android patch/res/
+        else
+          echo "Warning: tools/build/android/kptools-android not found!"
         fi
         
         # 复制Linux版本的可执行文件
         if [ -f tools/build/linux/kptools-linux ]; then
           cp -f tools/build/linux/kptools-linux patch/res/
+        else
+          echo "Warning: tools/build/linux/kptools-linux not found!"
         fi
         
         # 复制内核映像
         if [ -f kernel/kpimg ]; then
           cp -f kernel/kpimg patch/res/
+        else
+          echo "Warning: kernel/kpimg not found!"
         fi
 
         # 编译加密工具并加密kpimg
@@ -146,8 +152,22 @@ jobs:
           -DANDROID_PLATFORM=android-33 \
           -DANDROID_STL=c++_static
         cmake --build .
-        if [ -f patch ]; then
-          cp -f patch ../../patch_android 2>/dev/null || true
+        
+        # 检查构建结果
+        echo "Checking build results in build-android directory:"
+        ls -la
+        
+        # 查找可执行文件并复制
+        if [ -f patch_android ]; then
+          echo "Found patch_android, copying..."
+          cp -f patch_android ../../patch_android
+        elif [ -f patch ]; then
+          echo "Found patch, copying and renaming..."
+          cp -f patch ../../patch_android
+        else
+          echo "Error: No patch executable found!"
+          echo "Trying to find any executable..."
+          find . -type f -executable -name "*" -exec ls -la {} \;
         fi
 
     - name: Build patch - Linux x86_64
@@ -155,11 +175,34 @@ jobs:
       run: |
         mkdir -p build-linux && cd build-linux
         cmake .. && make
+        
+        # 检查构建结果
+        echo "Checking build results in build-linux directory:"
+        ls -la
+        
         # 重命名Linux版本的补丁程序
-        if [ -f patch ]; then
+        if [ -f patch_linux ]; then
+          echo "Found patch_linux, copying..."
+          cp -f patch_linux ../../patch_linux
+        elif [ -f patch ]; then
+          echo "Found patch, renaming and copying..."
           mv -f patch patch_linux 2>/dev/null || true
           cp -f patch_linux ../../patch_linux 2>/dev/null || true
+        else
+          echo "Error: No patch executable found!"
+          echo "Trying to find any executable..."
+          find . -type f -executable -name "*" -exec ls -la {} \;
         fi
+
+    - name: Check artifacts before upload
+      run: |
+        echo "Checking artifacts before upload:"
+        ls -la patch_android 2>/dev/null || echo "patch_android not found"
+        ls -la patch_linux 2>/dev/null || echo "patch_linux not found"
+        echo "Patch directory contents:"
+        ls -la patch/res/ 2>/dev/null || echo "patch/res/ not found"
+        echo "Include directory contents:"
+        ls -la patch/include/ 2>/dev/null || echo "patch/include/ not found"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -170,7 +213,10 @@ jobs:
           patch_linux
           patch/res/kpimg
           patch/res/kpimg.enc
-          patch/res/kptools-*
-          patch/include/*.h
-        if-no-files-found: warn
+          patch/res/kptools-android
+          patch/res/kptools-linux
+          patch/include/kpimg_enc.h
+          patch/include/kptools_android.h
+          patch/include/kptools_linux.h
+        if-no-files-found: error
         retention-days: 14
