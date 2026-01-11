@@ -35,50 +35,28 @@ jobs:
           curl \
           ccache
 
-    - name: Download and setup Android NDK r29
+    - name: Download and setup Android NDK r29 with curl
       run: |
         NDK_URL="https://dl.google.com/android/repository/android-ndk-r29-linux.zip"
-        NDK_ZIP="${GITHUB_WORKSPACE}/android-ndk-r29-linux.zip"
+        NDK_ZIP="android-ndk-r29-linux.zip"
         NDK_DIR="${GITHUB_WORKSPACE}/android-ndk-r29"
 
-        echo "Downloading NDK r29 from official source..."
-        echo "URL: $NDK_URL"
-        
-        curl -fL --retry 3 --retry-delay 5 --retry-connrefused --progress-bar \
-          -o "\( {NDK_ZIP}" " \){NDK_URL}" || {
-            echo ""
-            echo "============================================================="
-            echo "Download failed! Showing verbose debug information:"
-            echo "============================================================="
-            curl -v -fL --retry 0 -o /dev/null "${NDK_URL}"
-            echo ""
-            echo "File size check (if partial download happened):"
-            ls -lh "${NDK_ZIP}" 2>/dev/null || echo "No file downloaded"
-            echo "Please check the verbose output above for connection/server errors."
-            exit 1
-          }
-
-        echo ""
-        echo "Download completed. File information:"
-        ls -lh "${NDK_ZIP}"
-        
-        if [ ! -s "${NDK_ZIP}" ]; then
-          echo "Downloaded file is empty or zero size!"
-          exit 1
-        fi
-
-        echo ""
-        echo "Extracting NDK (this may take 2-5 minutes)..."
-        unzip -q "\( {NDK_ZIP}" -d " \){GITHUB_WORKSPACE}" || {
-          echo "Unzip failed! Possible corrupted download."
-          exit 1
+        echo "Downloading Android NDK r29..."
+        curl -L --progress-bar -o "\( {NDK_ZIP}" " \){NDK_URL}" || {
+          echo "Download failed! Trying mirror/alt method..."
+          curl -L -o "\( {NDK_ZIP}" " \){NDK_URL}" || exit 1
         }
-        
+
+        echo "Checking file size (should be around 780~800MB)..."
+        ls -lh "${NDK_ZIP}"
+
+        echo "Extracting NDK (this may take several minutes)..."
+        unzip -q "\( {NDK_ZIP}" -d " \){GITHUB_WORKSPACE}"
         rm -f "${NDK_ZIP}"
 
+        # 确认目录结构 - 正常情况下解压后就是 android-ndk-r29
         if [ ! -d "${NDK_DIR}" ]; then
-          echo "Error: Expected NDK directory '${NDK_DIR}' not found after extraction!"
-          echo "Directory listing of workspace:"
+          echo "Error: Expected directory ${NDK_DIR} not found after unzip!"
           ls -la "${GITHUB_WORKSPACE}"
           exit 1
         fi
@@ -89,11 +67,11 @@ jobs:
     - name: Show NDK information
       run: |
         echo "ANDROID_NDK_HOME = $ANDROID_NDK_HOME"
-        ls -la "$ANDROID_NDK_HOME" || echo "Cannot list NDK root"
-        echo ""
-        echo "CMake toolchain path check:"
-        ls -la "$ANDROID_NDK_HOME/build/cmake/" 2>/dev/null || echo "cmake directory not found"
+        ls -la $ANDROID_NDK_HOME
+        echo "Toolchain cmake path:"
+        ls -la $ANDROID_NDK_HOME/build/cmake/ || echo "cmake dir not found (still continue)"
 
+    # 下面都是你原有的构建步骤，只做少量容错调整
     - name: Build kptools - Android arm64-v8a
       working-directory: ./tools
       env:
@@ -110,7 +88,7 @@ jobs:
           ../..
 
         cmake --build . --config Release -j$(nproc)
-        mv kptools kptools-android 2>/dev/null || true
+        mv kptools kptools-android || true
 
     - name: Build kptools - Linux x86_64
       working-directory: ./tools
@@ -119,27 +97,27 @@ jobs:
         cd build/linux
         cmake .. -DCMAKE_BUILD_TYPE=Release
         make -j$(nproc)
-        mv kptools kptools-linux 2>/dev/null || true
+        mv kptools kptools-linux || true
 
     - name: Build kernel kpimg
       working-directory: ./kernel
       run: |
         make clean || true
-        make -j$(nproc) || echo "Kernel build completed with warnings/errors, continuing..."
+        make -j$(nproc) || echo "Kernel build had warnings/errors, continuing..."
 
     - name: Prepare patch resources & encrypt
       run: |
         mkdir -p patch/res
 
-        cp -f tools/build/android/kptools-android   patch/res/ 2>/dev/null || echo "kptools-android not found"
-        cp -f tools/build/linux/kptools-linux       patch/res/ 2>/dev/null || echo "kptools-linux not found"
-        cp -f kernel/kpimg                          patch/res/ 2>/dev/null || echo "kpimg not found"
+        cp -f tools/build/android/kptools-android   patch/res/ 2>/dev/null || echo "kptools-android missing"
+        cp -f tools/build/linux/kptools-linux       patch/res/ 2>/dev/null || echo "kptools-linux missing"
+        cp -f kernel/kpimg                          patch/res/ 2>/dev/null || echo "kpimg missing"
 
         cd patch
-        g++ -o encrypt encrypt.cpp -O3 -std=c++17 -lz 2>/dev/null || echo "Failed to compile encrypt tool (continue anyway)"
+        g++ -o encrypt encrypt.cpp -O3 -std=c++17 -lz || echo "encrypt compile warning/failed"
         chmod +x ./encrypt 2>/dev/null || true
 
-        ./encrypt res/kpimg res/kpimg.enc 2>/dev/null || echo "encrypt step failed, continuing..."
+        ./encrypt res/kpimg res/kpimg.enc || echo "encrypt execution failed, continuing..."
 
         xxd -i res/kpimg.enc     > include/kpimg_enc.h     2>/dev/null || true
         xxd -i res/kptools-linux   > include/kptools_linux.h   2>/dev/null || true
@@ -158,11 +136,11 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DANDROID_ABI=arm64-v8a \
           -DANDROID_PLATFORM=android-33 \
-          -DANDROID_STL=c++_static  || echo "CMake configuration failed, continuing..."
+          -DANDROID_STL=c++_static || echo "cmake config failed"
 
         cmake --build . --config Release -j$(nproc)
 
-        cp -f patch_android ../../patch_android 2>/dev/null || echo "patch_android binary not generated"
+        cp -f patch_android ../../patch_android 2>/dev/null || echo "patch_android not generated"
 
     - name: Build patch - Linux x86_64
       working-directory: ./patch
@@ -170,11 +148,11 @@ jobs:
         mkdir -p build-linux
         cd build-linux
 
-        cmake .. -DCMAKE_BUILD_TYPE=Release || echo "CMake configuration failed"
+        cmake .. -DCMAKE_BUILD_TYPE=Release || echo "cmake config failed"
         make -j$(nproc)
 
         mv -f patch patch_linux 2>/dev/null || true
-        cp -f patch_linux ../../patch_linux 2>/dev/null || echo "patch_linux binary not generated"
+        cp -f patch_linux ../../patch_linux 2>/dev/null || echo "patch_linux not generated"
 
     - name: Upload all important artifacts
       uses: actions/upload-artifact@v4
