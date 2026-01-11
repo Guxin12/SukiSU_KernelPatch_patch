@@ -25,7 +25,6 @@
 #include "kpm.h"
 #include "sha256.h"
 
-
 void read_kernel_file(const char *path, kernel_file_t *kernel_file)
 {
     int img_offset = 0;
@@ -247,6 +246,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
         search_len = kimg_len - (search_ptr - kimg);
         old_preset = NULL;
     }
+
     pimg->preset = old_preset;
 
     if (!old_preset) {
