@@ -101,6 +101,42 @@ jobs:
         xxd -i res/kptools-linux   > include/kptools_linux.h   2>/dev/null || true
         xxd -i res/kptools-android > include/kptools_android.h 2>/dev/null || true
 
+make clean
+make
+
+cd $PATCH
+
+g++ -o encrypt encrypt.cpp -O3 -std=c++17
+chmod 777 ./encrypt
+./encrypt res/kpimg res/kpimg.enc
+xxd -i res/kpimg.enc > include/kpimg_enc.h
+xxd -i res/kptools-linux > include/kptools_linux.h
+xxd -i res/kptools-android > include/kptools_android.h
+
+# 创建构建目录
+rm -rf build-android
+mkdir -p build-android
+cd build-android
+
+# 生成编译配置
+cmake .. \
+    -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DANDROID_ABI=arm64-v8a \
+    -DANDROID_PLATFORM=android-33 \
+    -DANDROID_STL=c++_static
+
+cmake --build .
+cp -r patch_android $HOME
+
+cd $PATCH
+rm -rf build-linux
+mkdir -p build-linux
+cd build-linux
+cmake .. && make
+mv patch patch_linux
+cp -r patch_linux $HOME
+
     - name: Build patch - Android arm64-v8a
       working-directory: ./patch
       env:
