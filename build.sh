@@ -6,6 +6,7 @@ TOOLS=$(pwd)/tools
 PATCH=$(pwd)/patch
 KERNEL=$(pwd)/kernel
 
+export ANDROID_NDK_HOME=/root/other/ndk/android-ndk-r29
 export NDK_HOME=/root/other/ndk/android-ndk-r29
 # 构建 Android 版本
 cd $TOOLS
